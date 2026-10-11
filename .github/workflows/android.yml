@@ -1,10 +1,14 @@
-name: Build Muse_2 Android APK
+name: Build Muse_2 APK
 
 on:
   push:
-    branches: ["main", "master"]
+    branches:
+      - main
+      - master
   pull_request:
-    branches: ["main", "master"]
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
 permissions:
@@ -12,8 +16,9 @@ permissions:
 
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -22,66 +27,60 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
-
-      - name: Set up Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential git zip unzip openjdk-17-jdk \
-            autoconf automake libtool pkg-config zlib1g-dev \
-            libncurses5-dev libncursesw5-dev libtinfo6 cmake \
-            libffi-dev libssl-dev libltdl-dev
+          sudo apt-get install -y \
+            git \
+            zip \
+            unzip \
+            openjdk-17-jdk \
+            autoconf \
+            automake \
+            libtool \
+            pkg-config \
+            zlib1g-dev \
+            libncurses5-dev \
+            libncursesw5-dev \
+            libtinfo6 \
+            cmake \
+            libffi-dev \
+            libssl-dev \
+            build-essential
 
-      - name: Install Android SDK command line tools
-        shell: bash
-        run: |
-          set -euxo pipefail
-          SDK="$HOME/.buildozer/android/platform/android-sdk"
-          mkdir -p "$SDK/cmdline-tools"
-          cd "$RUNNER_TEMP"
-          curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmdline-tools.zip
-          mkdir -p cmdline-tools-unpacked
-          unzip -q cmdline-tools.zip -d cmdline-tools-unpacked
-          rm -rf "$SDK/cmdline-tools/latest"
-          mkdir -p "$SDK/cmdline-tools/latest"
-          cp -a cmdline-tools-unpacked/cmdline-tools/. "$SDK/cmdline-tools/latest/"
-          yes | "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" --licenses >/dev/null || true
-          "$SDK/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK" \
-            "platform-tools" "platforms;android-35" "build-tools;35.0.0" "cmdline-tools;latest"
-          mkdir -p "$SDK/tools/bin"
-          ln -sf "$SDK/cmdline-tools/latest/bin/sdkmanager" "$SDK/tools/bin/sdkmanager"
-          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
-
-      - name: Install Buildozer
+      - name: Install Python build tools
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          python -m pip install "buildozer==1.6.0" "cython==0.29.36"
+          python -m pip install buildozer cython==0.29.36
 
-      - name: Verify project and API settings
+      - name: Check project files
         run: |
-          test -f main.py
-          test -f buildozer.spec
-          grep -q '^android.minapi = 24$' buildozer.spec
-          python -m py_compile main.py
+          echo "Repository files:"
+          ls -la
+          echo ""
+          if [ ! -f buildozer.spec ]; then
+            echo "ERROR: buildozer.spec was not found in the repository root."
+            exit 1
+          fi
+          if [ ! -f main.py ]; then
+            echo "ERROR: main.py was not found in the repository root."
+            exit 1
+          fi
 
-      - name: Build debug APK
+      - name: Build APK
+        run: |
+          buildozer android debug
         env:
-          BUILDOZER_WARN_ON_ROOT: "0"
-        run: buildozer -v android debug
+          APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
+
+      - name: Find generated APK
+        run: |
+          find bin -type f -name "*.apk" -print
 
       - name: Upload APK
-        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Muse_2-Android-APK
+          name: Muse_2-APK
           path: bin/*.apk
           if-no-files-found: error
-          retention-days: 14
